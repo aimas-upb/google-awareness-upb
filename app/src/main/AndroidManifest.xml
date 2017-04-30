@@ -25,6 +25,10 @@
             </intent-filter>
         </receiver>
 
+        <meta-data
+            android:name="com.google.android.awareness.API_KEY"
+            android:value="AIzaSyB8SJAndJfBVfR3Mh5HthpeMruoGi47tQI"
+            />
         <service
             android:name=".AwarenessBackgroundService"
             android:exported="false"/>
