@@ -1,19 +1,14 @@
 package cs.ai.upbassistant;
 
-import android.Manifest;
-import android.animation.ObjectAnimator;
 import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
-import android.content.pm.PackageManager;
 import android.location.Location;
 import android.support.annotation.NonNull;
-import android.support.v4.app.ActivityCompat;
-import android.support.v4.content.ContextCompat;
 import android.util.Log;
-import android.util.StringBuilderPrinter;
 
 import com.google.android.gms.awareness.Awareness;
+import com.google.android.gms.awareness.snapshot.DetectedActivityResult;
 import com.google.android.gms.awareness.snapshot.HeadphoneStateResult;
 import com.google.android.gms.awareness.snapshot.LocationResult;
 import com.google.android.gms.awareness.snapshot.WeatherResult;
@@ -22,6 +17,10 @@ import com.google.android.gms.awareness.state.Weather;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.location.ActivityRecognitionResult;
+import com.google.android.gms.location.DetectedActivity;
+
+import java.util.List;
 
 
 public class AwarenessBackgroundService extends IntentService {
@@ -31,6 +30,7 @@ public class AwarenessBackgroundService extends IntentService {
     public static Object objHeadphone = new Object();
     public static Object objWeather = new Object();
     public static Object objLocation = new Object();
+    public static Object objActivity = new Object();
     public AwarenessBackgroundService() {
         super("AwarenessBackgroundService");
     }
@@ -41,6 +41,8 @@ public class AwarenessBackgroundService extends IntentService {
         writeHeadphoneState();
         writeWeather();
         writeLocation();
+        writeActivity();
+        googleApiClient.disconnect();
     }
 
     public void setupGoogleApiClient() {
@@ -49,6 +51,49 @@ public class AwarenessBackgroundService extends IntentService {
                 .addApi(Awareness.API)
                 .build();
         googleApiClient.connect();
+    }
+
+    private void writeActivity() {
+        Awareness.SnapshotApi.getDetectedActivity(googleApiClient)
+                .setResultCallback(new ResultCallback<DetectedActivityResult>() {
+                    @Override
+                    public void onResult(@NonNull DetectedActivityResult detectedActivityResult) {
+                        if (detectedActivityResult.getStatus().isSuccess()) {
+                            ActivityRecognitionResult activity = detectedActivityResult
+                                    .getActivityRecognitionResult();
+
+                            List<DetectedActivity> activities =
+                                    activity.getProbableActivities();
+                            Log.e(TAG, "Size of activities = "+ activities.size());
+
+                            for (int i = 0; i < activities.size(); i ++) {
+                                DetectedActivity act = activities.get(i);
+                                String actName = activityToString(act.getType());
+                                if (actName == null)
+                                    continue;
+                                Log.e(TAG, "Activity no. "+i+" is " + actName
+                                        + " and it has confidence " + act.getConfidence());
+
+                            }
+
+                            Log.e(TAG, "The most probable activity is " + activityToString(activity
+                                    .getMostProbableActivity().getType()) +
+                                    " and it has confidence " + activity.getMostProbableActivity()
+                                    .getConfidence());
+                        }
+
+                        synchronized (AwarenessBackgroundService.objActivity) {
+                            AwarenessBackgroundService.objActivity.notifyAll();
+                        }
+                    }
+                });
+        synchronized (this.objActivity) {
+            try {
+                this.objActivity.wait();
+            } catch (InterruptedException e) {
+                Log.e(TAG,  "Interrupted exception " + e.getMessage());
+            }
+        }
     }
 
     public void writeLocation() {
@@ -98,10 +143,10 @@ public class AwarenessBackgroundService extends IntentService {
                 }
                 HeadphoneState headphoneState = headphoneStateResult.getHeadphoneState();
                 if (headphoneState.getState() == HeadphoneState.PLUGGED_IN) {
-                    Log.i(TAG, "Headphones are plugged in.\n");
+                    Log.e(TAG, "Headphones are plugged in.\n");
                 }
                 else {
-                    Log.i(TAG, "Headphones are NOT plugged in.\n");
+                    Log.e(TAG, "Headphones are NOT plugged in.\n");
                 }
                 synchronized (AwarenessBackgroundService.objHeadphone) {
                     AwarenessBackgroundService.objHeadphone.notifyAll();
@@ -184,7 +229,30 @@ public class AwarenessBackgroundService extends IntentService {
             case Weather.CONDITION_WINDY:
                 return new String("CONDITION_WINDY");
             default:
-                return new String("CONDITION_UNKNOWN");
+                return null;
+        }
+    }
+
+    private String activityToString(int activity) {
+        switch (activity) {
+            case 0:
+                return new String("IN_VEHICLE");
+            case 1:
+                return new String("ON_BICYCLE");
+            case 2:
+                return new String("ON_FOOT");
+            case 8:
+                return new String("RUNNING");
+            case 3:
+                return new String("STILL");
+            case 5:
+                return new String("TILTING");
+            case 4:
+                return new String("UNKNOWN");
+            case 7:
+                return new String("WALKING");
+            default:
+                return null;
         }
     }
 
