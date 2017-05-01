@@ -11,6 +11,7 @@ import com.google.android.gms.awareness.Awareness;
 import com.google.android.gms.awareness.snapshot.DetectedActivityResult;
 import com.google.android.gms.awareness.snapshot.HeadphoneStateResult;
 import com.google.android.gms.awareness.snapshot.LocationResult;
+import com.google.android.gms.awareness.snapshot.PlacesResult;
 import com.google.android.gms.awareness.snapshot.WeatherResult;
 import com.google.android.gms.awareness.state.HeadphoneState;
 import com.google.android.gms.awareness.state.Weather;
@@ -19,6 +20,7 @@ import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.location.ActivityRecognitionResult;
 import com.google.android.gms.location.DetectedActivity;
+import com.google.android.gms.location.places.PlaceLikelihood;
 
 import java.util.List;
 
@@ -31,6 +33,8 @@ public class AwarenessBackgroundService extends IntentService {
     public static Object objWeather = new Object();
     public static Object objLocation = new Object();
     public static Object objActivity = new Object();
+    public static Object objPlaces = new Object();
+    public static Location currentLocation;
     public AwarenessBackgroundService() {
         super("AwarenessBackgroundService");
     }
@@ -42,6 +46,7 @@ public class AwarenessBackgroundService extends IntentService {
         writeWeather();
         writeLocation();
         writeActivity();
+        writePlaces();
         googleApiClient.disconnect();
     }
 
@@ -51,6 +56,54 @@ public class AwarenessBackgroundService extends IntentService {
                 .addApi(Awareness.API)
                 .build();
         googleApiClient.connect();
+    }
+
+    private void writePlaces() {
+        Awareness.SnapshotApi.getPlaces(googleApiClient)
+                .setResultCallback(new ResultCallback<PlacesResult>() {
+                    @Override
+                    public void onResult(@NonNull PlacesResult placesResult) {
+                        if(placesResult.getStatus().isSuccess()) {
+                            List<PlaceLikelihood> places = placesResult.getPlaceLikelihoods();
+                            for (int i = 0; i < places.size(); i ++) {
+                                PlaceLikelihood place = places.get(i);
+                                float confidence = place.getLikelihood();
+                                /*
+                                if (confidence < 0.0001 )
+                                    continue;
+                                    */
+                                String placeName = (String) place.getPlace().getName();
+                                double lat = place.getPlace().getLatLng().latitude;
+                                double longi = place.getPlace().getLatLng().longitude;
+
+
+                                Location placeLocation = new Location(placeName);
+                                placeLocation.setLatitude(lat);
+                                placeLocation.setLongitude(longi);
+                                float distance = AwarenessBackgroundService.currentLocation
+                                        .distanceTo(placeLocation);
+
+                                Log.e(TAG, "Place no."+i+" is " + placeName +
+                                        " and confidence is " + confidence+
+                                        " and Latitude is " + lat + " and Longitude is "+ longi
+                                        + " and distance in meters is " + distance);
+                            }
+                        }
+
+
+
+                        synchronized (AwarenessBackgroundService.objPlaces) {
+                            AwarenessBackgroundService.objPlaces.notifyAll();
+                        }
+                    }
+                });
+        synchronized (this.objPlaces) {
+            try {
+                this.objPlaces.wait();
+            } catch (InterruptedException e) {
+                Log.e(TAG,  "Interrupted exception " + e.getMessage());
+            }
+        }
     }
 
     private void writeActivity() {
@@ -103,6 +156,7 @@ public class AwarenessBackgroundService extends IntentService {
                     public void onResult(@NonNull LocationResult locationResult) {
                         if (locationResult.getStatus().isSuccess()) {
                             Location location = locationResult.getLocation();
+                            AwarenessBackgroundService.currentLocation = location;
 
                             double latitude = location.getLatitude();
                             double longitude = location.getLongitude();
