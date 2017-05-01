@@ -54,7 +54,7 @@ public class AwarenessBackgroundService extends IntentService {
         writeWifi();
     }
 
-    public void setupGoogleApiClient() {
+    private void setupGoogleApiClient() {
         Context context = this.getApplicationContext();
         googleApiClient = new GoogleApiClient.Builder(context)
                 .addApi(Awareness.API)
@@ -122,7 +122,7 @@ public class AwarenessBackgroundService extends IntentService {
                 });
         synchronized (this.objPlaces) {
             try {
-                this.objPlaces.wait();
+                this.objPlaces.wait(3000);
             } catch (InterruptedException e) {
                 Log.e(TAG,  "Interrupted exception " + e.getMessage());
             }
@@ -165,14 +165,14 @@ public class AwarenessBackgroundService extends IntentService {
                 });
         synchronized (this.objActivity) {
             try {
-                this.objActivity.wait();
+                this.objActivity.wait(3000);
             } catch (InterruptedException e) {
                 Log.e(TAG,  "Interrupted exception " + e.getMessage());
             }
         }
     }
 
-    public void writeLocation() {
+    private void writeLocation() {
         Awareness.SnapshotApi.getLocation(googleApiClient)
                 .setResultCallback(new ResultCallback<LocationResult>() {
                     @Override
@@ -201,14 +201,14 @@ public class AwarenessBackgroundService extends IntentService {
                 });
         synchronized (this.objLocation) {
             try {
-                this.objLocation.wait();
+                this.objLocation.wait(3000);
             } catch (InterruptedException e) {
                 Log.e(TAG,  "Interrupted exception " + e.getMessage());
             }
         }
     }
 
-    public void writeHeadphoneState() {
+    private void writeHeadphoneState() {
         PendingResult<HeadphoneStateResult> result1 = Awareness.SnapshotApi
                 .getHeadphoneState(googleApiClient);
         result1.setResultCallback(new ResultCallback<HeadphoneStateResult>() {
@@ -232,14 +232,14 @@ public class AwarenessBackgroundService extends IntentService {
         });
         synchronized (this.objHeadphone) {
             try {
-                this.objHeadphone.wait();
+                this.objHeadphone.wait(3000);
             } catch (InterruptedException e) {
                 Log.e(TAG,  "Interrupted exception " + e.getMessage());
             }
         }
     }
 
-    public void writeWeather() {
+    private void writeWeather() {
 
         Awareness.SnapshotApi.getWeather(googleApiClient)
                 .setResultCallback(new ResultCallback<WeatherResult>() {
@@ -278,7 +278,7 @@ public class AwarenessBackgroundService extends IntentService {
                 });
         synchronized (this.objWeather) {
             try {
-                this.objWeather.wait();
+                this.objWeather.wait(3000);
             } catch (InterruptedException e) {
                 Log.e(TAG,  "Interrupted exception " + e.getMessage());
             }
