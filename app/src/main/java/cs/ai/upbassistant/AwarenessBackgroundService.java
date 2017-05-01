@@ -4,6 +4,8 @@ import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
 import android.location.Location;
+import android.net.wifi.ScanResult;
+import android.net.wifi.WifiManager;
 import android.support.annotation.NonNull;
 import android.util.Log;
 
@@ -28,6 +30,7 @@ import java.util.List;
 public class AwarenessBackgroundService extends IntentService {
 
     private GoogleApiClient googleApiClient;
+    WifiManager wifi;
     private final String TAG = "TAGAwareness";
     public static Object objHeadphone = new Object();
     public static Object objWeather = new Object();
@@ -48,6 +51,7 @@ public class AwarenessBackgroundService extends IntentService {
         writeActivity();
         writePlaces();
         googleApiClient.disconnect();
+        writeWifi();
     }
 
     public void setupGoogleApiClient() {
@@ -57,6 +61,25 @@ public class AwarenessBackgroundService extends IntentService {
                 .build();
         googleApiClient.connect();
     }
+
+    private void writeWifi() {
+        wifi = (WifiManager) getSystemService(Context.WIFI_SERVICE);
+
+        if (wifi.isWifiEnabled()) {
+            List<ScanResult> wifis = wifi.getScanResults();
+
+            Log.e(TAG, "Size of wifis = " + wifis.size());
+            for (int i = 0 ; i < wifis.size(); i ++) {
+                ScanResult wifiNetwork = wifis.get(i);
+                Log.e(TAG, "Wifi no."+i+" has name "+wifiNetwork.SSID+ " and level "+
+                wifi.calculateSignalLevel(wifiNetwork.level, 10));
+
+            }
+        } else {
+
+        }
+    }
+
 
     private void writePlaces() {
         Awareness.SnapshotApi.getPlaces(googleApiClient)
