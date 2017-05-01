@@ -6,6 +6,7 @@ import android.app.IntentService;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.location.Location;
 import android.support.annotation.NonNull;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -14,6 +15,7 @@ import android.util.StringBuilderPrinter;
 
 import com.google.android.gms.awareness.Awareness;
 import com.google.android.gms.awareness.snapshot.HeadphoneStateResult;
+import com.google.android.gms.awareness.snapshot.LocationResult;
 import com.google.android.gms.awareness.snapshot.WeatherResult;
 import com.google.android.gms.awareness.state.HeadphoneState;
 import com.google.android.gms.awareness.state.Weather;
@@ -28,6 +30,7 @@ public class AwarenessBackgroundService extends IntentService {
     private final String TAG = "TAGAwareness";
     public static Object objHeadphone = new Object();
     public static Object objWeather = new Object();
+    public static Object objLocation = new Object();
     public AwarenessBackgroundService() {
         super("AwarenessBackgroundService");
     }
@@ -37,6 +40,7 @@ public class AwarenessBackgroundService extends IntentService {
         setupGoogleApiClient();
         writeHeadphoneState();
         writeWeather();
+        writeLocation();
     }
 
     public void setupGoogleApiClient() {
@@ -45,6 +49,41 @@ public class AwarenessBackgroundService extends IntentService {
                 .addApi(Awareness.API)
                 .build();
         googleApiClient.connect();
+    }
+
+    public void writeLocation() {
+        Awareness.SnapshotApi.getLocation(googleApiClient)
+                .setResultCallback(new ResultCallback<LocationResult>() {
+                    @Override
+                    public void onResult(@NonNull LocationResult locationResult) {
+                        if (locationResult.getStatus().isSuccess()) {
+                            Location location = locationResult.getLocation();
+
+                            double latitude = location.getLatitude();
+                            double longitude = location.getLongitude();
+                            double altitude = location.getAltitude();
+                            float accuracy = location.getAccuracy();
+
+                            Log.e(TAG, "The Latitude is " + latitude);
+                            Log.e(TAG, "And The Longitude is " + longitude);
+                            Log.e(TAG, "And The Altitude is " + altitude);
+                            Log.e(TAG, "And The Accuracy is " + accuracy);
+
+                            synchronized (AwarenessBackgroundService.objLocation) {
+                                AwarenessBackgroundService.objLocation.notifyAll();
+                            }
+
+                        }
+
+                    }
+                });
+        synchronized (this.objLocation) {
+            try {
+                this.objLocation.wait();
+            } catch (InterruptedException e) {
+                Log.e(TAG,  "Interrupted exception " + e.getMessage());
+            }
+        }
     }
 
     public void writeHeadphoneState() {
