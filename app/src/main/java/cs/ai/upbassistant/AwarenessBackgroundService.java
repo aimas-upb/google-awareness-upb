@@ -8,20 +8,24 @@ import android.support.annotation.NonNull;
 import android.util.Log;
 
 import com.google.android.gms.awareness.Awareness;
+import com.google.android.gms.awareness.snapshot.BeaconStateResult;
 import com.google.android.gms.awareness.snapshot.DetectedActivityResult;
 import com.google.android.gms.awareness.snapshot.HeadphoneStateResult;
 import com.google.android.gms.awareness.snapshot.LocationResult;
 import com.google.android.gms.awareness.snapshot.PlacesResult;
 import com.google.android.gms.awareness.snapshot.WeatherResult;
+import com.google.android.gms.awareness.state.BeaconState;
 import com.google.android.gms.awareness.state.HeadphoneState;
 import com.google.android.gms.awareness.state.Weather;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.common.api.PendingResult;
 import com.google.android.gms.common.api.ResultCallback;
+import com.google.android.gms.common.server.converter.StringToIntConverter;
 import com.google.android.gms.location.ActivityRecognitionResult;
 import com.google.android.gms.location.DetectedActivity;
 import com.google.android.gms.location.places.PlaceLikelihood;
 
+import java.util.Arrays;
 import java.util.List;
 
 
@@ -34,7 +38,13 @@ public class AwarenessBackgroundService extends IntentService {
     public static Object objLocation = new Object();
     public static Object objActivity = new Object();
     public static Object objPlaces = new Object();
+    public static Object objBeacons = new Object();
     public static Location currentLocation;
+    List<BeaconState.TypeFilter> BEACON_TYPE_FILTERS = Arrays.asList(
+            BeaconState.TypeFilter.with(
+                    "my.beacon.namespace",
+                    "my-attachment-type"));
+
     public AwarenessBackgroundService() {
         super("AwarenessBackgroundService");
     }
@@ -47,6 +57,7 @@ public class AwarenessBackgroundService extends IntentService {
         writeLocation();
         writeActivity();
         writePlaces();
+        //writeBeacons();
         googleApiClient.disconnect();
     }
 
@@ -57,6 +68,47 @@ public class AwarenessBackgroundService extends IntentService {
                 .build();
         googleApiClient.connect();
     }
+
+    private void writeBeacons () {
+        Awareness.SnapshotApi.getBeaconState(googleApiClient, BEACON_TYPE_FILTERS)
+                .setResultCallback(new ResultCallback<BeaconStateResult>() {
+                    @Override
+                    public void onResult(@NonNull BeaconStateResult beaconStateResult) {
+
+                        if (beaconStateResult.getStatus().isSuccess()) {
+
+                            BeaconState beacon = beaconStateResult.getBeaconState();
+
+                            List<BeaconState.BeaconInfo> beacons = beacon.getBeaconInfo();
+                            Log.e(TAG, "Size of beacons = " + beacons.size());
+                            for (int i = 0; i < beacons.size(); i ++) {
+                                BeaconState.BeaconInfo beac = beacons.get(i);
+                                byte [] bytes = beac.getContent();
+                                if (bytes == null)
+                                    continue;
+                                String content = bytes.toString();
+                                String nameSpace = beac.getNamespace();
+                                String type = beac.getType();
+
+                                Log.e(TAG, "Beacon no." + i + " has content "+ content +
+                                        " and name space = " + nameSpace + " and type = "+ type);
+                            }
+                        }
+
+                        synchronized (AwarenessBackgroundService.objBeacons) {
+                            AwarenessBackgroundService.objBeacons.notifyAll();
+                        }
+                    }
+                });
+        synchronized (this.objBeacons) {
+            try {
+                this.objBeacons.wait();
+            } catch (InterruptedException e) {
+                Log.e(TAG,  "Interrupted exception " + e.getMessage());
+            }
+        }
+    }
+
 
     private void writePlaces() {
         Awareness.SnapshotApi.getPlaces(googleApiClient)
