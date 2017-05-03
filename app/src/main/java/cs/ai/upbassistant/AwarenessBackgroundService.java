@@ -6,6 +6,7 @@ import android.content.Intent;
 import android.location.Location;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
+import android.os.Environment;
 import android.support.annotation.NonNull;
 import android.util.Log;
 
@@ -24,6 +25,9 @@ import com.google.android.gms.location.ActivityRecognitionResult;
 import com.google.android.gms.location.DetectedActivity;
 import com.google.android.gms.location.places.PlaceLikelihood;
 
+import java.io.File;
+import java.io.FileWriter;
+import java.io.IOException;
 import java.util.List;
 
 
@@ -52,6 +56,7 @@ public class AwarenessBackgroundService extends IntentService {
         writePlaces();
         googleApiClient.disconnect();
         writeWifi();
+        writeToFile();
     }
 
     private void setupGoogleApiClient() {
@@ -60,6 +65,36 @@ public class AwarenessBackgroundService extends IntentService {
                 .addApi(Awareness.API)
                 .build();
         googleApiClient.connect();
+    }
+
+    private void writeToFile() {
+        if (AlarmService.filename != null) {
+            Context context = this.getApplicationContext();
+            try {
+                File dir = new File(
+                        Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOCUMENTS),
+                        "UPB_Awareness");
+                if (!dir.exists()) {
+                    dir.mkdir();
+                }
+                if (AlarmService.filename == null)
+                    return;
+
+                File json_file = new File(dir, AlarmService.filename);
+                FileWriter out = new FileWriter(json_file, true);
+                if (json_file.exists()) {
+
+                    out.append(new String("Apppend mode\n"));
+                } else {
+                    out.write(new String("Write mode!\n"));
+                }
+                out.flush();
+                out.close();
+
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+        }
     }
 
     private void writeWifi() {
