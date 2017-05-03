@@ -8,6 +8,7 @@ import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Environment;
 import android.support.annotation.NonNull;
+import android.util.JsonWriter;
 import android.util.Log;
 
 import com.google.android.gms.awareness.Awareness;
@@ -28,6 +29,8 @@ import com.google.android.gms.location.places.PlaceLikelihood;
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
+import java.text.DateFormat;
+import java.util.Date;
 import java.util.List;
 
 
@@ -42,6 +45,7 @@ public class AwarenessBackgroundService extends IntentService {
     public static Object objActivity = new Object();
     public static Object objPlaces = new Object();
     public static Location currentLocation;
+    public static int count = 0;
     public AwarenessBackgroundService() {
         super("AwarenessBackgroundService");
     }
@@ -82,13 +86,19 @@ public class AwarenessBackgroundService extends IntentService {
 
                 File json_file = new File(dir, AlarmService.filename);
                 FileWriter out = new FileWriter(json_file, true);
-                if (json_file.exists()) {
+                JsonWriter json = new JsonWriter(out);
+                json.setIndent("    ");
 
-                    out.append(new String("Apppend mode\n"));
-                } else {
-                    out.write(new String("Write mode!\n"));
-                }
-                out.flush();
+
+                json.beginObject();
+                json.name("Time").value(DateFormat.getDateTimeInstance().format(new Date()));
+                json.name("Count").value(this.count);
+                this.count ++;
+
+                json.endObject();
+
+                json.close();
+
                 out.close();
 
             } catch (Exception e) {
