@@ -25,13 +25,16 @@ import com.google.android.gms.common.api.ResultCallback;
 import com.google.android.gms.location.ActivityRecognitionResult;
 import com.google.android.gms.location.DetectedActivity;
 import com.google.android.gms.location.places.PlaceLikelihood;
+import com.google.android.gms.location.places.Places;
 
 import java.io.File;
 import java.io.FileWriter;
 import java.io.IOException;
 import java.text.DateFormat;
+import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.List;
+import java.util.TimeZone;
 
 
 public class AwarenessBackgroundService extends IntentService {
@@ -44,21 +47,58 @@ public class AwarenessBackgroundService extends IntentService {
     public static Object objLocation = new Object();
     public static Object objActivity = new Object();
     public static Object objPlaces = new Object();
+
+    public static boolean headphoneResponse;
+    public static boolean headphoneState;
+
+    public static boolean weatherResponse;
+    public static int[] conditions;
+    public static float humidity;
+    public static boolean celsius;
+    public static float dewPoint;
+    public static float temperature;
+    public static float feelsLike;
+
+    public static boolean locationResponse;
     public static Location currentLocation;
-    public static int count = 0;
+
+    public static boolean activityResponse;
+    public static List<DetectedActivity> activities;
+    public static DetectedActivity mostProbableActivity;
+
+    public static boolean placesResponse;
+    public static List<PlaceLikelihood> places;
+
+    public static boolean wifiON;
+    public static List<ScanResult> wifis;
+
+
+    private void resetResponses() {
+        headphoneResponse = false;
+        weatherResponse = false;
+        locationResponse = false;
+        activityResponse = false;
+        placesResponse = false;
+    }
+
+
+
     public AwarenessBackgroundService() {
         super("AwarenessBackgroundService");
     }
 
     @Override
     protected void onHandleIntent(Intent intent) {
+        resetResponses();
         setupGoogleApiClient();
+
         writeHeadphoneState();
         writeWeather();
         writeLocation();
         writeActivity();
         writePlaces();
         googleApiClient.disconnect();
+
         writeWifi();
         writeToFile();
     }
@@ -89,16 +129,138 @@ public class AwarenessBackgroundService extends IntentService {
                 JsonWriter json = new JsonWriter(out);
                 json.setIndent("    ");
 
-
                 json.beginObject();
-                json.name("Time").value(DateFormat.getDateTimeInstance().format(new Date()));
-                json.name("Count").value(this.count);
-                this.count ++;
+                String value;
+
+                //timestamp Unix Epoch
+                long timestamp = System.currentTimeMillis() / 1000L;
+                json.name("timestamp_unix").value(timestamp);
+
+                //timestamp UTC
+                SimpleDateFormat format = new SimpleDateFormat("yyyy-MM-dd HH:mm:ss");
+                format.setTimeZone(TimeZone.getTimeZone("UTC"));
+                value = format.format(new Date());
+                json.name("timestamp_utc").value(value);
+
+                // Headphone Status
+                if (AwarenessBackgroundService.headphoneResponse) {
+                    json.name("headphones").value(AwarenessBackgroundService.headphoneState);
+                } else
+                    json.name("headphones").nullValue();
+
+                // Weather Status
+                if (!AwarenessBackgroundService.weatherResponse)
+                    json.name("weather").nullValue();
+                else {
+                    json.name("weather");
+                    json.beginObject();
+
+                    value = new String("FAHRENHEIT");
+                    if (AwarenessBackgroundService.celsius) {
+                        value = new String("CELSIUS");
+                    }
+                    json.name("scale").value(value);
+                    json.name("humidity").value(AwarenessBackgroundService.humidity);
+                    json.name("dew_point").value(AwarenessBackgroundService.dewPoint);
+                    json.name("temperature").value(AwarenessBackgroundService.temperature);
+                    json.name("feels_like").value(AwarenessBackgroundService.feelsLike);
+                    json.name("conditions_size").value(AwarenessBackgroundService.conditions.length);
+                    json.name("conditions");
+                    json.beginArray();
+                    for (int i = 0; i < AwarenessBackgroundService.conditions.length; i++) {
+                        json.value(conditionToString(AwarenessBackgroundService.conditions[i]));
+                    }
+                    json.endArray();
+                    json.endObject();
+                }
+
+                // Location
+                if (!AwarenessBackgroundService.locationResponse)
+                    json.name("location").nullValue();
+                else {
+                    json.name("location");
+                    json.beginObject();
+                    json.name("latitude").value(AwarenessBackgroundService
+                            .currentLocation.getLatitude());
+                    json.name("longitude").value(AwarenessBackgroundService
+                            .currentLocation.getLongitude());
+                    json.name("altitude").value(AwarenessBackgroundService
+                            .currentLocation.getAltitude());
+                    json.name("data_accuracy").value(AwarenessBackgroundService
+                            .currentLocation.getAccuracy());
+                    json.endObject();
+                }
+
+                // Activities
+                if (AwarenessBackgroundService.activityResponse == false) {
+                    json.name("activities").nullValue();
+                } else {
+                    json.name("activities");
+                    json.beginArray();
+                    for (int i = 0; i < AwarenessBackgroundService.activities.size(); i++) {
+                        DetectedActivity act = AwarenessBackgroundService.activities.get(i);
+                        String name = activityToString(act.getType());
+                        if (name == null)
+                            continue;
+                        json.beginObject();
+                        Log.e(TAG, "Nume = "+name);
+                        json.name("activity_name").value(name);
+                        json.name("activity_confidence").value(act.getConfidence());
+                        json.endObject();
+                    }
+                    json.endArray();
+                }
+
+                // Places
+                if (AwarenessBackgroundService.placesResponse == false) {
+                    json.name("number_of_places").value(0);
+                    json.name("places").nullValue();
+                } else {
+                    json.name("number_of_places").value(AwarenessBackgroundService.places.size());
+                    json.name("places");
+                    json.beginArray();
+                    for ( int i = 0; i < AwarenessBackgroundService.places.size(); i ++) {
+
+                        json.beginObject();
+                        PlaceLikelihood place = AwarenessBackgroundService.places.get(i);
+                        json.name("place_name").value(place.getPlace().getName().toString());
+                        json.name("place_likelihood").value(place.getLikelihood());
+                        json.name("place_latitude").value(place.getPlace().getLatLng().latitude);
+                        json.name("place_longitude").value(place.getPlace().getLatLng().longitude);
+                        Location place_location = new Location((String)place.getPlace().getName());
+                        place_location.setLongitude(place.getPlace().getLatLng().longitude);
+                        place_location.setLatitude(place.getPlace().getLatLng().latitude);
+                        float dist = AwarenessBackgroundService.currentLocation
+                                .distanceTo(place_location);
+                        json.name("distance_from_user_meters").value(dist);
+                        json.endObject();
+                    }
+                    json.endArray();
+
+                }
+
+                // Wifi
+                if (AwarenessBackgroundService.wifiON == false) {
+                    json.name("wifi_ON").value(false);
+                    json.name("wifi_networks").nullValue();
+                } else {
+                    json.name("wifi_ON").value(true);
+                    json.name("wifi_networks");
+                    json.beginArray();
+                    for (int i = 0; i < AwarenessBackgroundService.wifis.size(); i++) {
+                        ScanResult wifiNetwork = AwarenessBackgroundService.wifis.get(i);
+                        json.beginObject();
+                        int signal_power = wifi.calculateSignalLevel(wifiNetwork.level, 10);
+                        json.name("SSID").value(wifiNetwork.SSID);
+                        json.name("signal_power").value(signal_power);
+                        json.endObject();
+                    }
+                    json.endArray();
+
+                }
 
                 json.endObject();
-
                 json.close();
-
                 out.close();
 
             } catch (Exception e) {
@@ -111,20 +273,12 @@ public class AwarenessBackgroundService extends IntentService {
         wifi = (WifiManager) getSystemService(Context.WIFI_SERVICE);
 
         if (wifi.isWifiEnabled()) {
-            List<ScanResult> wifis = wifi.getScanResults();
-
-            Log.e(TAG, "Size of wifis = " + wifis.size());
-            for (int i = 0 ; i < wifis.size(); i ++) {
-                ScanResult wifiNetwork = wifis.get(i);
-                Log.e(TAG, "Wifi no."+i+" has name "+wifiNetwork.SSID+ " and level "+
-                wifi.calculateSignalLevel(wifiNetwork.level, 10));
-
-            }
+            AwarenessBackgroundService.wifiON = true;
+            AwarenessBackgroundService.wifis = wifi.getScanResults();
         } else {
-
+            AwarenessBackgroundService.wifiON = false;
         }
     }
-
 
     private void writePlaces() {
         Awareness.SnapshotApi.getPlaces(googleApiClient)
@@ -132,35 +286,11 @@ public class AwarenessBackgroundService extends IntentService {
                     @Override
                     public void onResult(@NonNull PlacesResult placesResult) {
                         if(placesResult.getStatus().isSuccess()) {
-                            List<PlaceLikelihood> places = placesResult.getPlaceLikelihoods();
-                            for (int i = 0; i < places.size(); i ++) {
-                                PlaceLikelihood place = places.get(i);
-                                float confidence = place.getLikelihood();
-                                /*
-                                if (confidence < 0.0001 )
-                                    continue;
-                                    */
-                                String placeName = (String) place.getPlace().getName();
-                                double lat = place.getPlace().getLatLng().latitude;
-                                double longi = place.getPlace().getLatLng().longitude;
-
-
-                                Location placeLocation = new Location(placeName);
-                                placeLocation.setLatitude(lat);
-                                placeLocation.setLongitude(longi);
-                                float distance = AwarenessBackgroundService.currentLocation
-                                        .distanceTo(placeLocation);
-
-                                Log.e(TAG, "Place no."+i+" is " + placeName +
-                                        " and confidence is " + confidence+
-                                        " and Latitude is " + lat + " and Longitude is "+ longi
-                                        + " and distance in meters is " + distance);
-                            }
+                            AwarenessBackgroundService.places = placesResult.getPlaceLikelihoods();
                         }
 
-
-
                         synchronized (AwarenessBackgroundService.objPlaces) {
+                            AwarenessBackgroundService.placesResponse = true;
                             AwarenessBackgroundService.objPlaces.notifyAll();
                         }
                     }
@@ -183,27 +313,14 @@ public class AwarenessBackgroundService extends IntentService {
                             ActivityRecognitionResult activity = detectedActivityResult
                                     .getActivityRecognitionResult();
 
-                            List<DetectedActivity> activities =
+                            AwarenessBackgroundService.activities =
                                     activity.getProbableActivities();
-                            Log.e(TAG, "Size of activities = "+ activities.size());
-
-                            for (int i = 0; i < activities.size(); i ++) {
-                                DetectedActivity act = activities.get(i);
-                                String actName = activityToString(act.getType());
-                                if (actName == null)
-                                    continue;
-                                Log.e(TAG, "Activity no. "+i+" is " + actName
-                                        + " and it has confidence " + act.getConfidence());
-
-                            }
-
-                            Log.e(TAG, "The most probable activity is " + activityToString(activity
-                                    .getMostProbableActivity().getType()) +
-                                    " and it has confidence " + activity.getMostProbableActivity()
-                                    .getConfidence());
+                            AwarenessBackgroundService.mostProbableActivity = activity
+                                    .getMostProbableActivity();
                         }
 
                         synchronized (AwarenessBackgroundService.objActivity) {
+                            AwarenessBackgroundService.activityResponse = true;
                             AwarenessBackgroundService.objActivity.notifyAll();
                         }
                     }
@@ -223,23 +340,12 @@ public class AwarenessBackgroundService extends IntentService {
                     @Override
                     public void onResult(@NonNull LocationResult locationResult) {
                         if (locationResult.getStatus().isSuccess()) {
-                            Location location = locationResult.getLocation();
-                            AwarenessBackgroundService.currentLocation = location;
+                            AwarenessBackgroundService.currentLocation = locationResult.getLocation();
+                        }
 
-                            double latitude = location.getLatitude();
-                            double longitude = location.getLongitude();
-                            double altitude = location.getAltitude();
-                            float accuracy = location.getAccuracy();
-
-                            Log.e(TAG, "The Latitude is " + latitude);
-                            Log.e(TAG, "And The Longitude is " + longitude);
-                            Log.e(TAG, "And The Altitude is " + altitude);
-                            Log.e(TAG, "And The Accuracy is " + accuracy);
-
-                            synchronized (AwarenessBackgroundService.objLocation) {
-                                AwarenessBackgroundService.objLocation.notifyAll();
-                            }
-
+                        synchronized (AwarenessBackgroundService.objLocation) {
+                            AwarenessBackgroundService.locationResponse = true;
+                            AwarenessBackgroundService.objLocation.notifyAll();
                         }
 
                     }
@@ -259,18 +365,18 @@ public class AwarenessBackgroundService extends IntentService {
         result1.setResultCallback(new ResultCallback<HeadphoneStateResult>() {
             @Override
             public void onResult(@NonNull HeadphoneStateResult headphoneStateResult) {
-                if (!headphoneStateResult.getStatus().isSuccess()) {
-                    Log.e(TAG, "Could not get headphone state.");
-                    return;
+                if (headphoneStateResult.getStatus().isSuccess()) {
+
+                    HeadphoneState headphoneState = headphoneStateResult.getHeadphoneState();
+                    AwarenessBackgroundService.headphoneState = false;
+                    if (headphoneState.getState() == HeadphoneState.PLUGGED_IN) {
+
+                        AwarenessBackgroundService.headphoneState = true;
+                    }
                 }
-                HeadphoneState headphoneState = headphoneStateResult.getHeadphoneState();
-                if (headphoneState.getState() == HeadphoneState.PLUGGED_IN) {
-                    Log.e(TAG, "Headphones are plugged in.\n");
-                }
-                else {
-                    Log.e(TAG, "Headphones are NOT plugged in.\n");
-                }
+
                 synchronized (AwarenessBackgroundService.objHeadphone) {
+                    AwarenessBackgroundService.headphoneResponse = true;
                     AwarenessBackgroundService.objHeadphone.notifyAll();
                 }
             }
@@ -293,30 +399,15 @@ public class AwarenessBackgroundService extends IntentService {
                         if (weatherResult.getStatus().isSuccess()) {
                             Weather weather = weatherResult.getWeather();
 
-                            int[] conditions = weather.getConditions();
-                            StringBuilder stringBuilder = new StringBuilder();
-                            if (conditions.length > 0) {
-                                for (int i = 0; i < conditions.length; i++) {
-                                    if (i > 0)
-                                        stringBuilder.append(", ");
-                                    stringBuilder.append(conditionToString(conditions[i]));
-                                }
-                                Log.e(TAG, "The weather is = "+stringBuilder);
-                            }
-
-                            float humidity = weather.getHumidity();
-                            Log.e(TAG, "The Humidity is = " + humidity);
-
-                            float dewPoint = weather.getDewPoint(Weather.CELSIUS);
-                            Log.e(TAG, "And the dew point is "+ dewPoint + " degree Celsius");
-
-                            float temp = weather.getTemperature(Weather.CELSIUS);
-                            Log.e(TAG, "The temperature is = " + temp + " degree Celsius");
-
-                            float feelsLike = weather.getFeelsLikeTemperature(Weather.CELSIUS);
-                            Log.e(TAG, "And it Feels Like = " + feelsLike + " degree Celsius");
+                            AwarenessBackgroundService.conditions = weather.getConditions();
+                            AwarenessBackgroundService.humidity = weather.getHumidity();
+                            AwarenessBackgroundService.dewPoint = weather.getDewPoint(Weather.CELSIUS);
+                            AwarenessBackgroundService.celsius = true;
+                            AwarenessBackgroundService.temperature = weather.getTemperature(Weather.CELSIUS);
+                            AwarenessBackgroundService.feelsLike = weather.getFeelsLikeTemperature(Weather.CELSIUS);
                         }
                         synchronized (AwarenessBackgroundService.objWeather) {
+                            AwarenessBackgroundService.weatherResponse = true;
                             AwarenessBackgroundService.objWeather.notifyAll();
                         }
                     }
