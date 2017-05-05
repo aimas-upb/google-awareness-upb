@@ -7,6 +7,7 @@ import android.location.Location;
 import android.net.wifi.ScanResult;
 import android.net.wifi.WifiManager;
 import android.os.Environment;
+import android.os.Process;
 import android.support.annotation.NonNull;
 import android.util.JsonWriter;
 import android.util.Log;
@@ -48,6 +49,8 @@ public class AwarenessBackgroundService extends IntentService {
     public static Object objActivity = new Object();
     public static Object objPlaces = new Object();
 
+    public static boolean internetConnection;
+
     public static boolean headphoneResponse;
     public static boolean headphoneState;
 
@@ -79,6 +82,7 @@ public class AwarenessBackgroundService extends IntentService {
         locationResponse = false;
         activityResponse = false;
         placesResponse = false;
+        internetConnection = false;
     }
 
 
@@ -90,18 +94,36 @@ public class AwarenessBackgroundService extends IntentService {
     @Override
     protected void onHandleIntent(Intent intent) {
         resetResponses();
-        setupGoogleApiClient();
+        if (isOnline()) {
+            AwarenessBackgroundService.internetConnection = true;
+            setupGoogleApiClient();
 
-        writeHeadphoneState();
-        writeWeather();
-        writeLocation();
-        writeActivity();
-        writePlaces();
-        googleApiClient.disconnect();
-
+            writeHeadphoneState();
+            writeWeather();
+            writeLocation();
+            writeActivity();
+            writePlaces();
+            googleApiClient.disconnect();
+        }
         writeWifi();
         writeToFile();
     }
+
+    private boolean isOnline() {
+        Runtime run = Runtime.getRuntime();
+        try {
+            java.lang.Process ping = run.exec("/system/bin/ping -c 1 8.8.8.8");
+            int res = ping.waitFor();
+            return  (res == 0);
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        catch (InterruptedException e) {
+            e.printStackTrace();
+        }
+        return false;
+    }
+
 
     private void setupGoogleApiClient() {
         Context context = this.getApplicationContext();
@@ -141,6 +163,10 @@ public class AwarenessBackgroundService extends IntentService {
                 format.setTimeZone(TimeZone.getTimeZone("UTC"));
                 value = format.format(new Date());
                 json.name("timestamp_utc").value(value);
+
+                // Internet status
+                json.name("internet_available").value(AwarenessBackgroundService
+                        .internetConnection);
 
                 // Headphone Status
                 if (AwarenessBackgroundService.headphoneResponse) {
